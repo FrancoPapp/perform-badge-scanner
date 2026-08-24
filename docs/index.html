@@ -100,6 +100,32 @@
     #toast.error   { background: #ef476f; color: #fff; }
     #toast.show    { opacity: 1; }
 
+    /* ── Confirmation overlay ─────────────────────────── */
+    #confirm {
+      display: none; position: absolute; inset: 0; z-index: 30;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 1.2rem; padding: 2rem;
+      background: rgba(0,0,0,0.88); backdrop-filter: blur(8px);
+    }
+    #confirm.show { display: flex; }
+    #confirm.ok  .confirm-icon { color: #06d6a0; }
+    #confirm.err .confirm-icon { color: #ef476f; }
+    .confirm-icon { font-size: 5rem; line-height: 1; }
+    .confirm-label {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: #888;
+    }
+    .confirm-badge {
+      font-family: monospace; font-size: 1.3rem; font-weight: 700;
+      color: #fff; word-break: break-all; text-align: center;
+    }
+    .confirm-station { font-size: 0.95rem; color: #aaa; }
+    #next-btn {
+      margin-top: 0.8rem; padding: 1rem 2.5rem; border-radius: 14px; border: none;
+      background: #00b4d8; color: #fff; font-size: 1.1rem; font-weight: 700;
+      cursor: pointer; width: 100%; max-width: 320px;
+    }
+    #next-btn:active { background: #0096c7; }
+
     /* Recent scans footer */
     #recent {
       position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
@@ -147,7 +173,14 @@
     </div>
   </div>
 
-  <div id="toast"></div>
+  <!-- Confirmation overlay — shown after every scan -->
+  <div id="confirm">
+    <div class="confirm-icon" id="confirm-icon">✓</div>
+    <div class="confirm-label">Badge scanned</div>
+    <div class="confirm-badge" id="confirm-badge">—</div>
+    <div class="confirm-station" id="confirm-station">—</div>
+    <button id="next-btn" onclick="resumeScanning()">Scan Next →</button>
+  </div>
 
   <div id="recent">
     <h3>Recent Scans</h3>
@@ -164,8 +197,7 @@
 
   let stationId = '', stationName = '', staffId = '';
   let scanCount = 0;
-  let lastBadge = null, lastScanAt = 0;
-  const COOLDOWN_MS = 3000; // prevent double-scans of same badge
+  let scanning = true; // paused while confirmation overlay is visible
   const recentScans = [];
 
   // Pre-populate from URL params, then from baked-in values as fallback
@@ -215,14 +247,11 @@
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       ctx.drawImage(video, 0, 0);
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      if (!scanning) { requestAnimationFrame(tick); return; }
       const code = jsQR(img.data, img.width, img.height);
       if (code) {
-        const now = Date.now();
-        if (code.data !== lastBadge || now - lastScanAt > COOLDOWN_MS) {
-          lastBadge  = code.data;
-          lastScanAt = now;
-          handleScan(code.data);
-        }
+        scanning = false; // pause immediately to prevent double-fire
+        handleScan(code.data);
       }
     }
     requestAnimationFrame(tick);
@@ -252,15 +281,15 @@
       if (res.ok) {
         scanCount++;
         document.getElementById('count').textContent = scanCount;
-        toast('✓ ' + truncate(badgeId), 'success');
         addRecent(badgeId, true);
         vibrate();
+        showConfirm(badgeId, true);
       } else {
-        toast('✗ HTTP ' + res.status, 'error');
         addRecent(badgeId, false);
+        showConfirm(badgeId, false, 'HTTP ' + res.status);
       }
     } catch {
-      toast('✗ Network error', 'error');
+      showConfirm(badgeId, false, 'Network error');
     }
   }
 
@@ -275,13 +304,18 @@
       </div>`).join('');
   }
 
-  let toastTimer;
-  function toast(msg, type) {
-    const el = document.getElementById('toast');
-    el.textContent = msg;
-    el.className = type + ' show';
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+  function showConfirm(badgeId, ok, errMsg) {
+    const el = document.getElementById('confirm');
+    document.getElementById('confirm-icon').textContent    = ok ? '✓' : '✗';
+    document.getElementById('confirm-badge').textContent   = badgeId;
+    document.getElementById('confirm-station').textContent = ok ? stationName : (errMsg || 'Error');
+    document.getElementById('next-btn').textContent        = ok ? 'Scan Next →' : 'Try Again →';
+    el.className = ok ? 'show ok' : 'show err';
+  }
+
+  function resumeScanning() {
+    document.getElementById('confirm').className = '';
+    scanning = true;
   }
 
   function vibrate() { navigator.vibrate?.(80); }
