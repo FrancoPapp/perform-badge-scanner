@@ -157,10 +157,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
-  // ── DT config — pass via URL params or setup screen ──────
-  // ?tenant=https://xyz.dynatracelabs.com&token=dt0s16.XXX
-  let DT_TENANT = '', DT_TOKEN = '';
-  // ─────────────────────────────────────────────────────────
+  // Placeholders are substituted by GitHub Actions at deploy time.
+  // Locally they stay as-is and the setup screen prompts instead.
+  let DT_TENANT = '__DT_TENANT__'.startsWith('__') ? '' : '__DT_TENANT__';
+  let DT_TOKEN  = '__DT_TOKEN__'.startsWith('__')  ? '' : '__DT_TOKEN__';
 
   let stationId = '', stationName = '', staffId = '';
   let scanCount = 0;
@@ -168,17 +168,18 @@
   const COOLDOWN_MS = 3000; // prevent double-scans of same badge
   const recentScans = [];
 
-  // Pre-populate from URL params — e.g.
-  // ?tenant=https://xyz...&token=dt0s16...&station_id=STAND_AI&station_name=AI+Hub
+  // Pre-populate from URL params, then from baked-in values as fallback
   const p = new URLSearchParams(location.search);
-  if (p.get('tenant'))       document.getElementById('cfg-tenant').value       = p.get('tenant');
-  if (p.get('token'))        document.getElementById('cfg-token').value        = p.get('token');
-  if (p.get('station_id'))   document.getElementById('cfg-station-id').value   = p.get('station_id');
-  if (p.get('station_name')) document.getElementById('cfg-station-name').value = p.get('station_name');
-  if (p.get('staff_id'))     document.getElementById('cfg-staff-id').value     = p.get('staff_id');
+  document.getElementById('cfg-tenant').value       = p.get('tenant')       || DT_TENANT;
+  document.getElementById('cfg-token').value        = p.get('token')        || DT_TOKEN;
+  document.getElementById('cfg-station-id').value   = p.get('station_id')   || '';
+  document.getElementById('cfg-station-name').value = p.get('station_name') || '';
+  document.getElementById('cfg-staff-id').value     = p.get('staff_id')     || '';
 
-  // Auto-start only when all required params are present in the URL
-  if (p.get('tenant') && p.get('token') && p.get('station_id')) startScanner();
+  // Auto-start when tenant+token are baked in and station is in the URL
+  if ((DT_TENANT || p.get('tenant')) && (DT_TOKEN || p.get('token')) && p.get('station_id')) {
+    startScanner();
+  }
 
   function startScanner() {
     DT_TENANT   = document.getElementById('cfg-tenant').value.trim().replace(/\/$/, '');
