@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<!-- ─────────────────────────────────────────────────────────
+     Perform Badge Scanner — standalone static page
+     Posts bizevents DIRECTLY to the DT tenant (no proxy).
+     Host on any HTTPS static host (GitHub Pages, Netlify…).
+
+     Config via URL params:
+       ?station_id=STAND_AI&station_name=AI+Hub&staff_id=franco
+
+     To change tenant/token, edit DT_TENANT / DT_TOKEN below.
+──────────────────────────────────────────────────────────── -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Perform Badge Scanner</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0f0f1a; color: #fff; font-family: system-ui, sans-serif; height: 100dvh; overflow: hidden; }
+
+    /* ── Setup screen ─────────────────────────────────── */
+    #setup {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100dvh; padding: 2rem; gap: 1rem;
+    }
+    #setup h1 { font-size: 1.6rem; color: #00b4d8; }
+    #setup p  { color: #999; font-size: 0.9rem; text-align: center; }
+    #setup input {
+      width: 100%; padding: 0.8rem 1rem; border-radius: 10px;
+      border: 1px solid #333; background: #1e1e30; color: #fff; font-size: 1rem;
+    }
+    #setup input::placeholder { color: #666; }
+    #start-btn {
+      width: 100%; padding: 0.9rem; border-radius: 10px; border: none;
+      background: #00b4d8; color: #fff; font-size: 1rem; font-weight: 700; cursor: pointer;
+    }
+    #start-btn:active { background: #0096c7; }
+
+    /* ── Scanner screen ───────────────────────────────── */
+    #scanner { display: none; position: relative; height: 100dvh; }
+
+    video { width: 100%; height: 100%; object-fit: cover; }
+    canvas { display: none; }
+
+    /* Frosted header */
+    #header {
+      position: absolute; top: 0; left: 0; right: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.6rem 1rem; z-index: 10;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    #station-label { font-size: 0.9rem; font-weight: 600; color: #00b4d8; }
+    #scan-count { font-size: 0.85rem; color: #ccc; }
+    #scan-count span { color: #06d6a0; font-weight: 700; font-size: 1rem; }
+
+    /* QR target box */
+    #overlay {
+      position: absolute; inset: 0; z-index: 5;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+    .scan-box {
+      width: 240px; height: 240px; border-radius: 16px;
+      border: 2px solid rgba(0,180,216,0.7);
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+      position: relative;
+    }
+    /* Corner markers */
+    .scan-box::before, .scan-box::after,
+    .corner-bl, .corner-br {
+      content: ''; position: absolute; width: 24px; height: 24px;
+      border-color: #00b4d8; border-style: solid;
+    }
+    .scan-box::before { top: -2px;  left: -2px;  border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+    .scan-box::after  { top: -2px;  right: -2px; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+    .corner-bl { bottom: -2px; left: -2px;  border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+    .corner-br { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+
+    /* Scan line animation */
+    .scan-line {
+      position: absolute; left: 4px; right: 4px; height: 2px;
+      background: linear-gradient(90deg, transparent, #00b4d8, transparent);
+      animation: scanMove 2s linear infinite;
+    }
+    @keyframes scanMove {
+      0%   { top: 10px; opacity: 1; }
+      90%  { top: 220px; opacity: 1; }
+      100% { top: 220px; opacity: 0; }
+    }
+
+    /* Toast */
+    #toast {
+      position: absolute; bottom: 7rem; left: 50%; transform: translateX(-50%);
+      padding: 0.7rem 1.4rem; border-radius: 10px; font-size: 1rem; font-weight: 600;
+      z-index: 20; opacity: 0; transition: opacity 0.25s; white-space: nowrap;
+      pointer-events: none;
+    }
+    #toast.success { background: #06d6a0; color: #000; }
+    #toast.error   { background: #ef476f; color: #fff; }
+    #toast.show    { opacity: 1; }
+
+    /* Recent scans footer */
+    #recent {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 10;
+      background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);
+      padding: 0.6rem 1rem 0.8rem;
+      border-top: 1px solid rgba(255,255,255,0.07);
+    }
+    #recent h3 { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; color: #888; margin-bottom: 0.35rem; }
+    .scan-entry { display: flex; align-items: center; gap: 0.5rem; padding: 0.18rem 0; font-size: 0.78rem; color: #ccc; }
+    .scan-entry .status-ok  { color: #06d6a0; }
+    .scan-entry .status-err { color: #ef476f; }
+    .scan-entry .badge-id { color: #e0e0e0; font-family: monospace; }
+    .scan-entry .time { color: #666; margin-left: auto; }
+  </style>
+</head>
+<body>
+
+<!-- ── Setup Screen ───────────────────────────────────── -->
+<div id="setup">
+  <h1>🎫 Perform Scanner</h1>
+  <p>Configure this scanning station before starting</p>
+  <input id="cfg-tenant"       type="url"  placeholder="Tenant URL  (https://xyz.dynatracelabs.com)" autocomplete="off">
+  <input id="cfg-token"        type="password" placeholder="Api-Token (dt0s16.XXX…)" autocomplete="off">
+  <input id="cfg-station-id"   type="text" placeholder="Station ID  (e.g. STAND_AI)" autocomplete="off">
+  <input id="cfg-station-name" type="text" placeholder="Station Name (e.g. AI Innovation)" autocomplete="off">
+  <input id="cfg-staff-id"     type="text" placeholder="Staff ID (optional)" autocomplete="off">
+  <button id="start-btn" onclick="startScanner()">Start Scanning →</button>
+</div>
+
+<!-- ── Scanner Screen ─────────────────────────────────── -->
+<div id="scanner">
+  <div id="header">
+    <span id="station-label">—</span>
+    <span id="scan-count">Scans: <span id="count">0</span></span>
+  </div>
+
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+
+  <div id="overlay">
+    <div class="scan-box">
+      <div class="corner-bl"></div>
+      <div class="corner-br"></div>
+      <div class="scan-line"></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="recent">
+    <h3>Recent Scans</h3>
+    <div id="scan-list"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script>
+  // ── DT config — pass via URL params or setup screen ──────
+  // ?tenant=https://xyz.dynatracelabs.com&token=dt0s16.XXX
+  let DT_TENANT = '', DT_TOKEN = '';
+  // ─────────────────────────────────────────────────────────
+
+  let stationId = '', stationName = '', staffId = '';
+  let scanCount = 0;
+  let lastBadge = null, lastScanAt = 0;
+  const COOLDOWN_MS = 3000; // prevent double-scans of same badge
+  const recentScans = [];
+
+  // Pre-populate from URL params — e.g.
+  // ?tenant=https://xyz...&token=dt0s16...&station_id=STAND_AI&station_name=AI+Hub
+  const p = new URLSearchParams(location.search);
+  if (p.get('tenant'))       document.getElementById('cfg-tenant').value       = p.get('tenant');
+  if (p.get('token'))        document.getElementById('cfg-token').value        = p.get('token');
+  if (p.get('station_id'))   document.getElementById('cfg-station-id').value   = p.get('station_id');
+  if (p.get('station_name')) document.getElementById('cfg-station-name').value = p.get('station_name');
+  if (p.get('staff_id'))     document.getElementById('cfg-staff-id').value     = p.get('staff_id');
+
+  // Auto-start only when all required params are present in the URL
+  if (p.get('tenant') && p.get('token') && p.get('station_id')) startScanner();
+
+  function startScanner() {
+    DT_TENANT   = document.getElementById('cfg-tenant').value.trim().replace(/\/$/, '');
+    DT_TOKEN    = document.getElementById('cfg-token').value.trim();
+    stationId   = document.getElementById('cfg-station-id').value.trim();
+    stationName = document.getElementById('cfg-station-name').value.trim() || stationId;
+    staffId     = document.getElementById('cfg-staff-id').value.trim();
+
+    if (!DT_TENANT || !DT_TOKEN) { alert('Tenant URL and API token are required'); return; }
+    if (!stationId) { alert('Station ID is required'); return; }
+
+    document.getElementById('setup').style.display  = 'none';
+    document.getElementById('scanner').style.display = 'block';
+    document.getElementById('station-label').textContent = `📍 ${stationName}`;
+
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+      .then(stream => {
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+        video.play();
+        requestAnimationFrame(tick);
+      })
+      .catch(err => alert('Camera error: ' + err.message));
+  }
+
+  function tick() {
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0);
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(img.data, img.width, img.height);
+      if (code) {
+        const now = Date.now();
+        if (code.data !== lastBadge || now - lastScanAt > COOLDOWN_MS) {
+          lastBadge  = code.data;
+          lastScanAt = now;
+          handleScan(code.data);
+        }
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  async function handleScan(badgeId) {
+    const event = {
+      'event.type':     'com.dynatrace.perform.stand.scan',
+      'event.provider': 'perform.badge.scanner',
+      'attendee.id':    badgeId,
+      'station.id':     stationId,
+      'station.name':   stationName,
+      'timestamp':      new Date().toISOString(),
+    };
+    if (staffId) event['scanned_by.staff_id'] = staffId;
+
+    try {
+      const res = await fetch(`${DT_TENANT}/api/v2/bizevents/ingest`, {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Api-Token ${DT_TOKEN}`,
+        },
+        body: JSON.stringify(event),
+      });
+
+      if (res.ok) {
+        scanCount++;
+        document.getElementById('count').textContent = scanCount;
+        toast('✓ ' + truncate(badgeId), 'success');
+        addRecent(badgeId, true);
+        vibrate();
+      } else {
+        toast('✗ HTTP ' + res.status, 'error');
+        addRecent(badgeId, false);
+      }
+    } catch {
+      toast('✗ Network error', 'error');
+    }
+  }
+
+  function addRecent(badgeId, ok) {
+    recentScans.unshift({ id: badgeId, ok, time: new Date().toLocaleTimeString() });
+    if (recentScans.length > 4) recentScans.pop();
+    document.getElementById('scan-list').innerHTML = recentScans.map(s => `
+      <div class="scan-entry">
+        <span class="${s.ok ? 'status-ok' : 'status-err'}">${s.ok ? '✓' : '✗'}</span>
+        <span class="badge-id">${truncate(s.id)}</span>
+        <span class="time">${s.time}</span>
+      </div>`).join('');
+  }
+
+  let toastTimer;
+  function toast(msg, type) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = type + ' show';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+  }
+
+  function vibrate() { navigator.vibrate?.(80); }
+  function truncate(s) { return s.length > 18 ? s.slice(0, 16) + '…' : s; }
+</script>
+</body>
+</html>
