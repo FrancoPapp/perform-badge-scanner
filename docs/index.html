@@ -204,10 +204,8 @@
   let scanning = true; // paused while confirmation overlay is visible
   const recentScans = [];
 
-  // Pre-populate from URL params, then from saved/baked-in values as fallback
+  // Only pre-populate non-sensitive fields; never expose credentials in the form
   const p = new URLSearchParams(location.search);
-  document.getElementById('cfg-tenant').value       = p.get('tenant')       || DT_TENANT;
-  document.getElementById('cfg-token').value        = p.get('token')        || DT_TOKEN;
   document.getElementById('cfg-station-id').value   = p.get('station_id')   || '';
   document.getElementById('cfg-station-name').value = p.get('station_name') || '';
   document.getElementById('cfg-staff-id').value     = p.get('staff_id')     || '';
