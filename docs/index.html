@@ -188,6 +188,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
+  // Placeholders substituted by GitHub Actions at deploy time
+  let DT_TENANT = '__DT_TENANT__'.startsWith('__') ? '' : '__DT_TENANT__';
+  let DT_TOKEN  = '__DT_TOKEN__'.startsWith('__')  ? '' : '__DT_TOKEN__';
+
   let stationId = '', stationName = '', staffId = '';
   let scanCount = 0;
   let scanning = true; // paused while confirmation overlay is visible
@@ -198,7 +202,7 @@
   document.getElementById('cfg-station-name').value = p.get('station_name') || '';
   document.getElementById('cfg-staff-id').value     = p.get('staff_id')     || '';
 
-  if (p.get('station_id')) startScanner();
+  if (DT_TENANT && DT_TOKEN && p.get('station_id')) startScanner();
 
   function startScanner() {
     stationId   = document.getElementById('cfg-station-id').value.trim();
@@ -242,16 +246,24 @@
   }
 
   async function handleScan(badgeId) {
+    const event = {
+      'event.type':     'com.dynatrace.perform.stand.scan',
+      'event.provider': 'perform.badge.scanner',
+      'attendee.id':    badgeId,
+      'station.id':     stationId,
+      'station.name':   stationName,
+      'timestamp':      new Date().toISOString(),
+    };
+    if (staffId) event['scanned_by.staff_id'] = staffId;
+
     try {
-      const res = await fetch('/api/scan', {
+      const res = await fetch(`${DT_TENANT}/api/v2/bizevents/ingest`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          attendee_id:  badgeId,
-          station_id:   stationId,
-          station_name: stationName,
-          staff_id:     staffId || undefined,
-        }),
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Api-Token ${DT_TOKEN}`,
+        },
+        body: JSON.stringify(event),
       });
 
       if (res.ok) {
