@@ -24,8 +24,13 @@ jobs:
           sed -i "s|__DT_TOKEN__|${{ secrets.DT_TOKEN }}|g"   docs/index.html
 
       - name: Deploy to gh-pages branch
-        uses: JamesIves/github-pages-deploy-action@v4
-        with:
-          folder: docs
-          branch: gh-pages
-          clean: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          cd docs
+          git init -b gh-pages
+          git add -A
+          git commit -m "deploy"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" gh-pages
