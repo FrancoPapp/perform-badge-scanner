@@ -195,12 +195,16 @@
   let DT_TENANT = '__DT_TENANT__'.startsWith('__') ? '' : '__DT_TENANT__';
   let DT_TOKEN  = '__DT_TOKEN__'.startsWith('__')  ? '' : '__DT_TOKEN__';
 
+  // Fall back to credentials saved on this device from a previous session
+  if (!DT_TENANT) DT_TENANT = localStorage.getItem('dt_tenant') || '';
+  if (!DT_TOKEN)  DT_TOKEN  = localStorage.getItem('dt_token')  || '';
+
   let stationId = '', stationName = '', staffId = '';
   let scanCount = 0;
   let scanning = true; // paused while confirmation overlay is visible
   const recentScans = [];
 
-  // Pre-populate from URL params, then from baked-in values as fallback
+  // Pre-populate from URL params, then from saved/baked-in values as fallback
   const p = new URLSearchParams(location.search);
   document.getElementById('cfg-tenant').value       = p.get('tenant')       || DT_TENANT;
   document.getElementById('cfg-token').value        = p.get('token')        || DT_TOKEN;
@@ -208,7 +212,7 @@
   document.getElementById('cfg-station-name').value = p.get('station_name') || '';
   document.getElementById('cfg-staff-id').value     = p.get('staff_id')     || '';
 
-  // Auto-start when tenant+token are baked in and station is in the URL
+  // Auto-start when credentials are available and station is in the URL
   if ((DT_TENANT || p.get('tenant')) && (DT_TOKEN || p.get('token')) && p.get('station_id')) {
     startScanner();
   }
@@ -222,6 +226,9 @@
 
     if (!DT_TENANT || !DT_TOKEN) { alert('Tenant URL and API token are required'); return; }
     if (!stationId) { alert('Station ID is required'); return; }
+
+    localStorage.setItem('dt_tenant', DT_TENANT);
+    localStorage.setItem('dt_token',  DT_TOKEN);
 
     document.getElementById('setup').style.display  = 'none';
     document.getElementById('scanner').style.display = 'block';
