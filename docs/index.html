@@ -147,8 +147,6 @@
 <div id="setup">
   <h1>🎫 Perform Scanner</h1>
   <p>Configure this scanning station before starting</p>
-  <input id="cfg-tenant"       type="url"  placeholder="Tenant URL  (https://xyz.dynatracelabs.com)" autocomplete="off">
-  <input id="cfg-token"        type="password" placeholder="Api-Token (dt0s16.XXX…)" autocomplete="off">
   <input id="cfg-station-id"   type="text" placeholder="Station ID  (e.g. STAND_AI)" autocomplete="off">
   <input id="cfg-station-name" type="text" placeholder="Station Name (e.g. AI Innovation)" autocomplete="off">
   <input id="cfg-staff-id"     type="text" placeholder="Staff ID (optional)" autocomplete="off">
@@ -190,43 +188,24 @@
 
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <script>
-  // Placeholders are substituted by GitHub Actions at deploy time.
-  // Locally they stay as-is and the setup screen prompts instead.
-  let DT_TENANT = '__DT_TENANT__'.startsWith('__') ? '' : '__DT_TENANT__';
-  let DT_TOKEN  = '__DT_TOKEN__'.startsWith('__')  ? '' : '__DT_TOKEN__';
-
-  // Fall back to credentials saved on this device from a previous session
-  if (!DT_TENANT) DT_TENANT = localStorage.getItem('dt_tenant') || '';
-  if (!DT_TOKEN)  DT_TOKEN  = localStorage.getItem('dt_token')  || '';
-
   let stationId = '', stationName = '', staffId = '';
   let scanCount = 0;
   let scanning = true; // paused while confirmation overlay is visible
   const recentScans = [];
 
-  // Only pre-populate non-sensitive fields; never expose credentials in the form
   const p = new URLSearchParams(location.search);
   document.getElementById('cfg-station-id').value   = p.get('station_id')   || '';
   document.getElementById('cfg-station-name').value = p.get('station_name') || '';
   document.getElementById('cfg-staff-id').value     = p.get('staff_id')     || '';
 
-  // Auto-start when credentials are available and station is in the URL
-  if ((DT_TENANT || p.get('tenant')) && (DT_TOKEN || p.get('token')) && p.get('station_id')) {
-    startScanner();
-  }
+  if (p.get('station_id')) startScanner();
 
   function startScanner() {
-    DT_TENANT   = document.getElementById('cfg-tenant').value.trim().replace(/\/$/, '');
-    DT_TOKEN    = document.getElementById('cfg-token').value.trim();
     stationId   = document.getElementById('cfg-station-id').value.trim();
     stationName = document.getElementById('cfg-station-name').value.trim() || stationId;
     staffId     = document.getElementById('cfg-staff-id').value.trim();
 
-    if (!DT_TENANT || !DT_TOKEN) { alert('Tenant URL and API token are required'); return; }
     if (!stationId) { alert('Station ID is required'); return; }
-
-    localStorage.setItem('dt_tenant', DT_TENANT);
-    localStorage.setItem('dt_token',  DT_TOKEN);
 
     document.getElementById('setup').style.display  = 'none';
     document.getElementById('scanner').style.display = 'block';
@@ -263,24 +242,16 @@
   }
 
   async function handleScan(badgeId) {
-    const event = {
-      'event.type':     'com.dynatrace.perform.stand.scan',
-      'event.provider': 'perform.badge.scanner',
-      'attendee.id':    badgeId,
-      'station.id':     stationId,
-      'station.name':   stationName,
-      'timestamp':      new Date().toISOString(),
-    };
-    if (staffId) event['scanned_by.staff_id'] = staffId;
-
     try {
-      const res = await fetch(`${DT_TENANT}/api/v2/bizevents/ingest`, {
+      const res = await fetch('/api/scan', {
         method: 'POST',
-        headers: {
-          'Content-Type':  'application/json',
-          'Authorization': `Api-Token ${DT_TOKEN}`,
-        },
-        body: JSON.stringify(event),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          attendee_id:  badgeId,
+          station_id:   stationId,
+          station_name: stationName,
+          staff_id:     staffId || undefined,
+        }),
       });
 
       if (res.ok) {
